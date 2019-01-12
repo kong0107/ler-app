@@ -1,0 +1,3 @@
+[submodule "src/js/lawtext2obj"]
+	path = src/js/lawtext2obj
+	url = https://github.com/kong0107/lawtext2obj.git

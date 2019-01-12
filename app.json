@@ -23,7 +23,11 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "hiv.kong0107.ler"
+    },
+    "android": {
+      "package": "hiv.kong0107.ler"
     }
   }
 }

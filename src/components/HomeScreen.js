@@ -5,13 +5,17 @@ import {
   TextInput,
   FlatList
 } from 'react-native';
+
 import config from '../js/config';
 import styles from '../js/styles';
 
+import OptionButton from './OptionButton';
+
 export default class HomeScreen extends React.Component {
-  static navigationOptions = {
+  static navigationOptions = ({navigation}) =>({
     title: '法規亦毒氣',
-  };
+    headerRight: <OptionButton navigation={navigation} />
+  });
 
   constructor(props) {
     super(props);

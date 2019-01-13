@@ -1,10 +1,12 @@
 import { StyleSheet } from 'react-native';
+import {Constants} from 'expo';
 
 export default styles = StyleSheet.create({
   container: {
     padding: 8
   },
 
+  // Home
   searchInput: {
     margin: 4
   },
@@ -19,6 +21,7 @@ export default styles = StyleSheet.create({
     fontSize: 10
   },
 
+  // Law
   lawTitle: {
     fontSize: 20
   },
@@ -31,10 +34,28 @@ export default styles = StyleSheet.create({
     fontWeight: 'bold'
   },
   articleItem: {
-    paddingLeft: 20,
-    marginBottom: 8
+    marginBottom: 8,
+    flexDirection: 'row'
+  },
+  articleItemOrdinal: {
+    flex: 0,
+    paddingRight: 4,
+    lineHeight: 25
+  },
+  articleItemOrdinal0: {
+    minWidth: 25,
+    textAlign: 'center'
+  },
+  articleItemContent: {
+    flex: 1
   },
   articleItemText: {
     lineHeight: 25
+  },
+
+  // Setting
+  optionContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between'
   }
 });

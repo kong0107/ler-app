@@ -1,31 +1,114 @@
+import { FileSystem as fs } from 'expo';
 import React from 'react';
 import {
   View,
   Text,
-  Switch
+  Switch,
+  Button
 } from 'react-native';
-import config from '../js/config';
+
+import Settings from '../js/Settings';
 import styles from '../js/styles';
+import {errorHandler as eh} from '../js/utility';
+
+import LawAPI from '../js/LawAPI';
+
 
 export default class SettingScreen extends React.Component {
   static navigationOptions = {
-    title: '選項'
+    title: '設定'
   };
 
   constructor(props) {
     super(props);
     this.state = {
+      updateProgress: '',
+      updateButtonText: '檢查更新中',
+      updateButtonDisabled: true
     };
+    this.updateLawIndex = this.updateLawIndex.bind(this);
+  }
+
+  componentWillMount() {
+    Promise.all([
+      Settings.load(),
+      LawAPI.remoteUpdateDate(),
+      LawAPI.localUpdateDate()
+    ]).then(([settings, remoteUpdateDate, localUpdateDate]) => {
+      const updatable = (remoteUpdateDate > localUpdateDate);
+      this.setState({
+        ...settings,
+        remoteUpdateDate,
+        localUpdateDate,
+        updateButtonText: (updatable ? '更新至' : '已是最新列表').concat(' ', remoteUpdateDate),
+        updateButtonDisabled: false//!updatable
+      });
+    }).catch(eh);
+  }
+
+  setSetting(key, value) {
+    const state = {};
+    state[key] = value;
+    Settings.set(key, value)
+    .then(() => this.setState(state))
+    .catch(eh);
+  }
+
+  updateLawIndex() {
+    this.setState({
+      updateButtonText: '更新中',
+      updateButtonDisabled: true
+    });
+    LawAPI.updateIndex()
+    .then(LawAPI.localUpdateDate)
+    .then(ud => this.setState({
+      localUpdateDate: ud,
+      remoteUpdateDate: ud,
+      updateButtonText: `已更新至 ${ud}`
+    }));
   }
 
   render() {
     return (
       <View style={styles.container}>
-        <View style={styles.optionContainer}>
-          <Text>句讀換行</Text>
-          <Switch
-            value={true}
-            onValueChange={() => {}}
+        <View style={styles.settingContainer}>
+          <View style={styles.settingText}>
+            <Text style={styles.settingName}>在斷句處換行</Text>
+            <Text style={styles.settingDescription}>在逗號、句號、分號、冒號處換行，以利閱讀。</Text>
+          </View>
+          <View style={styles.settingValue}>
+            <Switch
+              value={this.state.wrapArticleItemByPunctuation}
+              onValueChange={newValue =>
+                this.setSetting('wrapArticleItemByPunctuation', newValue)
+              }
+            />
+          </View>
+        </View>
+        {/*<View style={styles.settingContainer}>
+          <View style={styles.settingText}>
+            <Text style={styles.settingName}>自動更新資料</Text>
+            <Text style={styles.settingDescription}>
+              即使關閉自動更新，仍會在瀏覽未下載的法規時自動下載。
+            </Text>
+          </View>
+          <View style={styles.settingValue}>
+            <Switch
+              value={this.state.wrapArticleItemByPunctuation}
+              onValueChange={newValue =>
+                this.setSetting('wrapArticleItemByPunctuation', newValue)
+              }
+            />
+          </View>
+        </View>*/}
+
+        <View style={styles.settingUpdate}>
+          <Text style={styles.settingUpdateTitle}>法規列表</Text>
+          <Text>僅包含法規的基本資料（名稱與更新日期），但不包含法規內文。</Text>
+          <Button
+            title={this.state.updateButtonText}
+            disabled={this.state.updateButtonDisabled}
+            onPress={this.updateLawIndex}
           />
         </View>
       </View>

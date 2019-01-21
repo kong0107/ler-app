@@ -54,8 +54,28 @@ export default styles = StyleSheet.create({
   },
 
   // Setting
-  optionContainer: {
+  settingContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    padding: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ccc'
+  },
+  settingText: {
+    flex: 1
+  },
+  settingDescription: {
+    fontSize: 12,
+    color: 'gray'
+  },
+  settingValue: {
+    flex: 0
+  },
+
+  settingUpdate: {
+    marginTop: 20
+  },
+  settingUpdateTitle: {
+    fontSize: 16
   }
 });

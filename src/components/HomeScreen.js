@@ -8,6 +8,8 @@ import {
 
 import config from '../js/config';
 import styles from '../js/styles';
+import LawAPI from '../js/LawAPI';
+import { createFilterFunction } from '../js/utility';
 
 import OptionButton from './OptionButton';
 
@@ -26,15 +28,15 @@ export default class HomeScreen extends React.Component {
   }
 
   componentDidMount() {
-    fetch(`${config.cdn}/index.json`)
-    .then(res => res.json())
-    .then(laws => this.setState({laws}));
+    LawAPI.getIndex()
+    .then(laws => this.setState({
+      laws: laws.sort((a, b) => b.lastUpdate - a.lastUpdate)
+    }));
   }
 
   render() {
-    const {query: q, laws} = this.state;
-    const matchedLaw = q ? laws.filter(law => law.name.indexOf(q) !== -1) : laws;
-    matchedLaw.sort((a, b) => b.lastUpdate - a.lastUpdate);
+    const {query, laws} = this.state;
+    const testFunc = createFilterFunction(query);
     return (
       <View style={styles.container}>
         <TextInput style={styles.searchInput}
@@ -42,8 +44,8 @@ export default class HomeScreen extends React.Component {
           onChangeText={query => this.setState({query})}
         />
         <FlatList
-          data={matchedLaw}
-          keyExtractor={law => law.PCode}
+          data={laws.filter(law => testFunc(law.name))}
+          keyExtractor={law => law.pcode}
           renderItem={({item: law}) => <LawListItem law={law} navigation={this.props.navigation} />}
         />
       </View>
@@ -56,9 +58,8 @@ class LawListItem extends React.Component {
     const law = this.props.law;
     return (
       <View style={styles.lawListItem}>
-        <Text
-          style={styles.lawListItemName}
-          onPress={() => this.props.navigation.navigate('Law', {pcode: law.PCode})}
+        <Text style={styles.lawListItemName}
+          onPress={() => this.props.navigation.navigate('Law', {pcode: law.pcode})}
         >{law.name}</Text>
         <Text style={styles.lawListItemDate}>{law.lastUpdate}</Text>
       </View>

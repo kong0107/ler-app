@@ -14,7 +14,7 @@ export default createAppContainer(
       Setting: SettingScreen
     },
     {
-      initialRouteName: 'Setting'
+      initialRouteName: 'Home'
     }
   )
 );

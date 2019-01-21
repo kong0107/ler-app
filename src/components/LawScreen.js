@@ -3,15 +3,20 @@ import {
   View,
   ScrollView,
   Text,
+  TextInput,
   FlatList,
   //Share
 } from 'react-native';
 
-import config from '../js/config';
 import styles from '../js/styles';
-import {numf, romanize} from '../js/utility';
+import {
+  numf,
+  romanize,
+  createFilterFunction
+} from '../js/utility';
 const lawtext2obj = require('../js/lawtext2obj');
 
+import LawAPI from '../js/LawAPI';
 import OptionButton from './OptionButton';
 
 
@@ -28,7 +33,8 @@ export default class LawScreen extends React.Component {
       law: {
         division: [],
         articles: []
-      }
+      },
+      query: ''
     };
   }
 
@@ -36,9 +42,7 @@ export default class LawScreen extends React.Component {
     const pcode = this.props.navigation.getParam('pcode', 'H0080067');
     this.setState({pcode});
     if(!pcode) return;
-    fetch(`${config.cdn}/FalVMingLing/${pcode}.json`)
-    .then(res => res.json())
-    .then(law => {
+    LawAPI.getLaw(pcode).then(law => {
       this.props.navigation.setParams({title: law.title});
       law.articles.forEach(article =>
         article.arranged = lawtext2obj(article.content)
@@ -48,15 +52,25 @@ export default class LawScreen extends React.Component {
   }
 
   render() {
-    const law = this.state.law;
+    const {query, law} = this.state;
+    const testFunc = createFilterFunction(query);
     return (
       <View style={styles.container}>
         <ScrollView>
+          <TextInput style={styles.searchInput}
+            placeholder="搜尋"
+            onChangeText={query => this.setState({query})}
+          />
+          <View>
+            <Text>{law.pcode}</Text>
+            <Text>{law.lastUpdate}</Text>
+          </View>
           <Text>{law.preamble}</Text>
           <FlatList
-            data={law.articles}
+            data={law.articles.filter(article => testFunc(article.content))}
             keyExtractor={article => article.number.toString()}
             renderItem={({item: article}) => <Article law={law} article={article} />}
+            ListEmptyComponent={<Text>讀取中</Text>}
           />
         </ScrollView>
       </View>

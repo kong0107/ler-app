@@ -1,11 +1,10 @@
 import React from 'react';
 import {
   View,
-  ScrollView,
   Text,
   TextInput,
   FlatList,
-  //Share
+  SectionList
 } from 'react-native';
 
 import styles from '../js/styles';
@@ -16,9 +15,9 @@ import {
 } from '../js/utility';
 const lawtext2obj = require('../js/lawtext2obj');
 
+import Settings from '../js/Settings';
 import LawAPI from '../js/LawAPI';
 import OptionButton from './OptionButton';
-
 
 export default class LawScreen extends React.Component {
   static navigationOptions = ({navigation}) =>({
@@ -31,23 +30,52 @@ export default class LawScreen extends React.Component {
     this.state = {
       pcode: '',
       law: {
-        division: [],
+        divisions: [],
         articles: []
       },
       query: ''
     };
   }
 
+  /**
+   * 把巢狀編章節扁平化，然後弄成 SectionList 方便用的樣子。
+   * 方法：只留下最底層的編章節，並追加 ancestors 屬性來記錄其祖先們。
+   * @param {*} divisions
+   * @param {*} articles
+   */
+  makeSections(divisions, articles) {
+    if(!divisions.length) return [{data: articles}];
+
+    const result = divisions.slice();
+    for(let i = 0; i < result.length;) {
+      const target = result[i];
+      if(target.children) {
+        const ancestors = target.ancestors || [];
+        target.children.forEach(subDiv => subDiv.ancestors = [...ancestors, target]);
+        result.splice(i, 1, ...target.children);
+      }
+      else {
+        target.data = articles.filter(a => a.number >= target.start && a.number <= target.end);
+        ++i;
+      }
+    }
+    return result;
+  }
+
   componentDidMount() {
-    const pcode = this.props.navigation.getParam('pcode', 'H0080067');
+    const pcode = this.props.navigation.getParam('pcode', 'B0000001');//'H0080067');
     this.setState({pcode});
     if(!pcode) return;
-    LawAPI.getLaw(pcode).then(law => {
+    Promise.all([
+      LawAPI.getLaw(pcode),
+      Settings.get('wrapArticleItemByPunctuation')
+    ])
+    .then(([law, wrapArticleItemByPunctuation]) => {
       this.props.navigation.setParams({title: law.title});
       law.articles.forEach(article =>
         article.arranged = lawtext2obj(article.content)
       );
-      this.setState({law});
+      this.setState({law, wrapArticleItemByPunctuation});
     });
   }
 
@@ -56,27 +84,52 @@ export default class LawScreen extends React.Component {
     const testFunc = createFilterFunction(query);
     return (
       <View style={styles.container}>
-        <ScrollView>
-          <TextInput style={styles.searchInput}
-            placeholder="搜尋"
-            onChangeText={query => this.setState({query})}
-          />
-          <View>
-            <Text>{law.pcode}</Text>
-            <Text>{law.lastUpdate}</Text>
-          </View>
-          <Text>{law.preamble}</Text>
-          <FlatList
-            data={law.articles.filter(article => testFunc(article.content))}
-            keyExtractor={article => article.number.toString()}
-            renderItem={({item: article}) => <Article law={law} article={article} />}
-            ListEmptyComponent={<Text>讀取中</Text>}
-          />
-        </ScrollView>
+        <TextInput style={styles.searchInput}
+          placeholder="搜尋"
+          onChangeText={query => this.setState({query})}
+        />
+        <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'}}>
+          <Text>{law.pcode}</Text>
+          <Text>{law.lastUpdate}</Text>
+        </View>
+        <SectionList style={styles.lawContent}
+          sections={this.makeSections(law.divisions, law.articles)}
+          renderSectionHeader={({section}) => <DivisionHeader division={section} />}
+          renderItem={({item}) => <Article article={item} wrap={this.state.wrapArticleItemByPunctuation} />}
+          keyExtractor={article => article.number.toString()}
+          stickySectionHeadersEnabled={true}
+        />
       </View>
     );
   }
 }
+
+class DivisionHeader extends React.Component {
+  renderPart(division) {
+    if(!division.title) return null;
+    return (
+      <View style={styles.divisionHeaderPart}>
+        <Text style={styles.divisionHeaderNumber}>第 {numf(division.number)} {division.type}</Text>
+        <Text style={styles.divisionHeaderTitle}>{division.title}</Text>
+      </View>
+    );
+  }
+
+  render() {
+    const division = this.props.division;
+    return (
+      <View style={styles.divisionHeader}>
+        <FlatList style={styles.divisionHeaderAncestors}
+          data={division.ancestors}
+          renderItem={({item}) => this.renderPart(item)}
+          keyExtractor={div => div.type + div.start}
+        />
+        {this.renderPart(division)}
+      </View>
+    );
+  }
+}
+
 
 class Article extends React.Component {
   /*constructor(props) {
@@ -104,7 +157,7 @@ class Article extends React.Component {
     return (
       <View style={styles.article}>
         <Text style={styles.articleNumber}>第 {numf(article.number)} 條</Text>
-        <ParaList items={article.arranged} />
+        <ParaList items={article.arranged} wrap={this.props.wrap} />
       </View>
     );
   }
@@ -125,7 +178,8 @@ class ParaList extends React.Component {
           text = text.substring(match[0].length);
         }
       }
-      text = text.replace(/([，；：。])/g, '$1\n').trim();
+      if(this.props.wrap)
+        text = text.replace(/([，；：。])/g, '$1\n').trim();
 
       return (
         <View key={index} style={styles.articleItem}>

@@ -1,10 +1,9 @@
 {
   "name": "ler-app",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "preinstall": "git submodule init && git submodule update",
-    "postinstall": "npm install -g react-native-cli && react-native link",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",

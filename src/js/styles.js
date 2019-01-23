@@ -3,7 +3,8 @@ import {Constants} from 'expo';
 
 export default styles = StyleSheet.create({
   container: {
-    padding: 8
+    padding: 8,
+    flex: 1
   },
 
   // Home
@@ -24,6 +25,26 @@ export default styles = StyleSheet.create({
   // Law
   lawTitle: {
     fontSize: 20
+  },
+  lawContent: {
+  },
+  divisionHeader: {
+    backgroundColor: '#ccc',
+    flexDirection: 'row',
+    flexWrap: 'wrap'
+  },
+  divisionHeaderAncestors: {
+    flexDirection: 'row',
+    flexWrap: 'wrap'
+  },
+  divisionHeaderPart: {
+    marginEnd: 12,
+    alignItems: 'flex-start'
+  },
+  divisionHeaderNumber: {
+  },
+  divisionHeaderTitle: {
+    fontSize: 24,
   },
   article: {
     padding: 4,

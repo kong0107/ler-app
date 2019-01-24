@@ -1,4 +1,3 @@
-import { FileSystem as fs } from 'expo';
 import React from 'react';
 import {
   View,
@@ -16,7 +15,8 @@ import LawAPI from '../js/LawAPI';
 
 export default class SettingScreen extends React.Component {
   static navigationOptions = {
-    title: '設定'
+    title: '設定',
+    headerRight: null
   };
 
   constructor(props) {
@@ -74,7 +74,7 @@ export default class SettingScreen extends React.Component {
         <View style={styles.settingContainer}>
           <View style={styles.settingText}>
             <Text style={styles.settingName}>在斷句處換行</Text>
-            <Text style={styles.settingDescription}>在逗號、句號、分號、冒號處換行，以利閱讀。</Text>
+            <Text style={styles.settingDescription}>在句號、分號、冒號處換行，以利閱讀。</Text>
           </View>
           <View style={styles.settingValue}>
             <Switch

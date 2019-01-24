@@ -17,12 +17,10 @@ const lawtext2obj = require('../js/lawtext2obj');
 
 import Settings from '../js/Settings';
 import LawAPI from '../js/LawAPI';
-import OptionButton from './OptionButton';
 
 export default class LawScreen extends React.Component {
   static navigationOptions = ({navigation}) =>({
-    title: navigation.getParam('title', ''),
-    headerRight: <OptionButton navigation={navigation} />
+    title: navigation.getParam('title', '')
   });
 
   constructor(props) {
@@ -33,33 +31,22 @@ export default class LawScreen extends React.Component {
         divisions: [],
         articles: []
       },
-      query: ''
+      query: '',
+      searchInputVisibility: false
     };
+    this.showSearchInput = this.showSearchInput.bind(this);
   }
 
   /**
-   * 把巢狀編章節扁平化，然後弄成 SectionList 方便用的樣子。
-   * 方法：只留下最底層的編章節，並追加 ancestors 屬性來記錄其祖先們。
-   * @param {*} divisions
-   * @param {*} articles
+   * 顯示搜尋框
    */
-  makeSections(divisions, articles) {
-    if(!divisions.length) return [{data: articles}];
-
-    const result = divisions.slice();
-    for(let i = 0; i < result.length;) {
-      const target = result[i];
-      if(target.children) {
-        const ancestors = target.ancestors || [];
-        target.children.forEach(subDiv => subDiv.ancestors = [...ancestors, target]);
-        result.splice(i, 1, ...target.children);
-      }
-      else {
-        target.data = articles.filter(a => a.number >= target.start && a.number <= target.end);
-        ++i;
-      }
-    }
-    return result;
+  showSearchInput() {
+    const ref = this.refSearchInput;
+    if(!ref) return;
+    this.setState({
+      searchInputVisibility: true
+    })
+    ref.focus();
   }
 
   componentDidMount() {
@@ -77,6 +64,9 @@ export default class LawScreen extends React.Component {
       );
       this.setState({law, wrapArticleItemByPunctuation});
     });
+
+    // 設定按了 headerRight 的搜尋鈕時要做的事：顯示搜尋框
+    this.props.navigation.setParams({search: this.showSearchInput});
   }
 
   render() {
@@ -84,7 +74,8 @@ export default class LawScreen extends React.Component {
     const testFunc = createFilterFunction(query);
     return (
       <View style={styles.container}>
-        <TextInput style={styles.searchInput}
+        <TextInput style={[styles.searchInput, this.state.searchInputVisibility || styles.none]}
+          ref={ins => this.refSearchInput = ins}
           placeholder="搜尋"
           onChangeText={query => this.setState({query})}
         />
@@ -93,7 +84,7 @@ export default class LawScreen extends React.Component {
           <Text>{law.lastUpdate}</Text>
         </View>
         <SectionList style={styles.lawContent}
-          sections={this.makeSections(law.divisions, law.articles)}
+          sections={makeSections(law.divisions, law.articles.filter(article => testFunc(article.content)))}
           renderSectionHeader={({section}) => <DivisionHeader division={section} />}
           renderItem={({item}) => <Article article={item} wrap={this.state.wrapArticleItemByPunctuation} />}
           keyExtractor={article => article.number.toString()}
@@ -103,6 +94,46 @@ export default class LawScreen extends React.Component {
     );
   }
 }
+
+
+/**
+ * 把巢狀編章節扁平化，然後弄成 SectionList 方便用的樣子。
+ * 概要：只留下最底層的編章節，並追加 ancestors 屬性來記錄其祖先們。
+ * 方法：把陣列底層中有子區塊的編章節，「替換」為其子區塊。
+ * 例： [
+ *  {a},
+ *  {b, children: [{c}, {d}, {e}]},
+ *  {f}
+ * ]
+ * 轉換後： [
+ *  {a},
+ *  {c, ancestors: [{b}]},
+ *  {d, ancestors: [{b}]},
+ *  {e, ancestors: [{b}]},
+ *  {f}
+ * ]
+ *
+ * 最後僅回傳內有條文的區塊，這是為了在搜尋法條時，略去顯示不需要的編章節。
+ */
+const makeSections = (divisions, articles) => {
+  if(!divisions.length) return [{data: articles}];
+
+  const result = divisions.slice();
+  for(let i = 0; i < result.length;) {
+    const section = result[i];
+    if(section.children) {
+      const ancestors = section.ancestors || [];
+      section.children.forEach(subDiv => subDiv.ancestors = [...ancestors, section]);
+      result.splice(i, 1, ...section.children);
+    }
+    else {
+      section.data = articles.filter(a => a.number >= section.start && a.number <= section.end);
+      ++i;
+    }
+  }
+  return result.filter(section => section.data.length);
+};
+
 
 class DivisionHeader extends React.Component {
   renderPart(division) {
@@ -179,14 +210,14 @@ class ParaList extends React.Component {
         }
       }
       if(this.props.wrap)
-        text = text.replace(/([，；：。])/g, '$1\n').trim();
+        text = text.replace(/([；：。])/g, '$1\n').trim();
 
       return (
         <View key={index} style={styles.articleItem}>
           <Text style={[styles.articleItemOrdinal, styles[`articleItemOrdinal${item.stratum}`]]}>{ordinal}</Text>
           <View style={styles.articleItemContent}>
             <Text style={styles.articleItemText}>{text}</Text>
-            {item.children && item.children.length ? <ParaList items={item.children} /> : null}
+            {item.children && item.children.length ? <ParaList items={item.children} wrap={this.props.wrap} /> : null}
           </View>
         </View>
       );

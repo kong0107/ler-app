@@ -6,6 +6,15 @@ export default styles = StyleSheet.create({
     padding: 8,
     flex: 1
   },
+  none: {
+    display: 'none'
+  },
+  headerRight: {
+    flexDirection: 'row'
+  },
+  icon: {
+    marginHorizontal: 8
+  },
 
   // Home
   searchInput: {

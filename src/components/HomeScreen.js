@@ -6,18 +6,14 @@ import {
   FlatList
 } from 'react-native';
 
-import config from '../js/config';
 import styles from '../js/styles';
 import LawAPI from '../js/LawAPI';
 import { createFilterFunction } from '../js/utility';
 
-import OptionButton from './OptionButton';
-
 export default class HomeScreen extends React.Component {
-  static navigationOptions = ({navigation}) =>({
-    title: '法規亦毒氣',
-    headerRight: <OptionButton navigation={navigation} />
-  });
+  static navigationOptions = {
+    title: '法規亦毒氣'
+  };
 
   constructor(props) {
     super(props);
@@ -32,6 +28,11 @@ export default class HomeScreen extends React.Component {
     .then(laws => this.setState({
       laws: laws.sort((a, b) => b.lastUpdate - a.lastUpdate)
     }));
+
+    // 設定按了 headerRight 的搜尋鈕時要做的事：聚焦到搜尋框
+    this.props.navigation.setParams({search: () => {
+      if(this.refSearchInput) this.refSearchInput.focus();
+    }});
   }
 
   render() {
@@ -40,6 +41,7 @@ export default class HomeScreen extends React.Component {
     return (
       <View style={styles.container}>
         <TextInput style={styles.searchInput}
+          ref={ins => this.refSearchInput = ins}
           placeholder="搜尋"
           onChangeText={query => this.setState({query})}
         />
@@ -53,7 +55,7 @@ export default class HomeScreen extends React.Component {
   }
 }
 
-class LawListItem extends React.Component {
+class LawListItem extends React.PureComponent {
   render() {
     const law = this.props.law;
     return (

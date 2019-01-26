@@ -50,7 +50,7 @@ export default class LawScreen extends React.Component {
   }
 
   componentDidMount() {
-    const pcode = this.props.navigation.getParam('pcode', 'B0000001');//'H0080067');
+    const pcode = this.props.navigation.getParam('pcode', 'H0080067');
     this.setState({pcode});
     if(!pcode) return;
     Promise.all([
@@ -216,12 +216,32 @@ class ParaList extends React.Component {
         <View key={index} style={styles.articleItem}>
           <Text style={[styles.articleItemOrdinal, styles[`articleItemOrdinal${item.stratum}`]]}>{ordinal}</Text>
           <View style={styles.articleItemContent}>
-            <Text style={styles.articleItemText}>{text}</Text>
+            <ParaListItem style={styles.articleItemText}>{text}</ParaListItem>
             {item.children && item.children.length ? <ParaList items={item.children} wrap={this.props.wrap} /> : null}
           </View>
         </View>
       );
     });
     return <View>{list}</View>;
+  }
+}
+
+const reArtNum = /第[一二三四五六七八九十百千]+條(之[一二三四五六七八九十]+)?(第[一二三四五六七八九十]+[項類款目])*([、及或至](第([一二三四五六七八九十百千]+)[條項類款目](之[一二三四五六七八九十]+)?)+)*/;
+class ParaListItem extends React.PureComponent {
+  render() {
+    const text = this.props.children;
+    if(Array.isArray(text))
+      return <Text>Error: para list item shall not have multiple children</Text>;
+
+    const frags = [];
+    let str = text, counter = 0;
+    for(let match; match = reArtNum.exec(str); reArtNum.lastIndex = 0) {
+      if(match.index)
+        frags.push(<Text key={counter++}>{str.substring(0, match.index)}</Text>);
+      frags.push(<Text key={counter++} style={{color: 'red'}}>{match[0]}</Text>);
+      str = str.substring(match.index + match[0].length);
+    }
+    if(str) frags.push(<Text key={counter++}>{str}</Text>);
+    return <Text>{frags}</Text>;
   }
 }

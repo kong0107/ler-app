@@ -60,6 +60,7 @@ export const getIndex = () =>
       return lawIndex = await read('index.json').then(JSON.parse);
     })
 ;
+export const getIndexSync = () => lawIndex; // TODO: not a good solution
 
 export const updateIndex = () =>
   Promise.all([
@@ -143,7 +144,7 @@ export const updateLaw = pcode =>
 
 export default LawAPI = {
   remoteUpdateDate, localUpdateDate,
-  getIndex, updateIndex,
+  getIndex, updateIndex, getIndexSync,
   getLaw, updateLaw
   //,updateAll
 };

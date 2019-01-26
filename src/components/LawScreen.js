@@ -86,7 +86,12 @@ export default class LawScreen extends React.Component {
         <SectionList style={styles.lawContent}
           sections={makeSections(law.divisions, law.articles.filter(article => testFunc(article.content)))}
           renderSectionHeader={({section}) => <DivisionHeader division={section} />}
-          renderItem={({item}) => <Article article={item} wrap={this.state.wrapArticleItemByPunctuation} />}
+          renderItem={({item}) =>
+            <Article article={item}
+              navigation={this.props.navigation}
+              wrap={this.state.wrapArticleItemByPunctuation}
+            />
+          }
           keyExtractor={article => article.number.toString()}
           stickySectionHeadersEnabled={true}
         />
@@ -188,7 +193,7 @@ class Article extends React.Component {
     return (
       <View style={styles.article}>
         <Text style={styles.articleNumber}>第 {numf(article.number)} 條</Text>
-        <ParaList items={article.arranged} wrap={this.props.wrap} />
+        <ParaList {...this.props} items={article.arranged} />
       </View>
     );
   }
@@ -216,8 +221,8 @@ class ParaList extends React.Component {
         <View key={index} style={styles.articleItem}>
           <Text style={[styles.articleItemOrdinal, styles[`articleItemOrdinal${item.stratum}`]]}>{ordinal}</Text>
           <View style={styles.articleItemContent}>
-            <ParaListItem style={styles.articleItemText}>{text}</ParaListItem>
-            {item.children && item.children.length ? <ParaList items={item.children} wrap={this.props.wrap} /> : null}
+            <ParaListItem {...this.props}>{text}</ParaListItem>
+            {item.children && item.children.length ? <ParaList {...this.props} items={item.children} /> : null}
           </View>
         </View>
       );
@@ -227,21 +232,53 @@ class ParaList extends React.Component {
 }
 
 const reArtNum = /第[一二三四五六七八九十百千]+條(之[一二三四五六七八九十]+)?(第[一二三四五六七八九十]+[項類款目])*([、及或至](第([一二三四五六七八九十百千]+)[條項類款目](之[一二三四五六七八九十]+)?)+)*/;
-class ParaListItem extends React.PureComponent {
+class ParaListItem extends React.Component {
+  constructor(props) {
+    super(props);
+    this.lawIndex = LawAPI.getIndexSync()
+      .sort((a, b) => b.name.length - a.name.length);
+  }
+
   render() {
     const text = this.props.children;
-    if(Array.isArray(text))
-      return <Text>Error: para list item shall not have multiple children</Text>;
+    if(typeof text !== 'string') return <Text>Error: string expected</Text>;
 
-    const frags = [];
-    let str = text, counter = 0;
-    for(let match; match = reArtNum.exec(str); reArtNum.lastIndex = 0) {
-      if(match.index)
-        frags.push(<Text key={counter++}>{str.substring(0, match.index)}</Text>);
-      frags.push(<Text key={counter++} style={{color: 'red'}}>{match[0]}</Text>);
-      str = str.substring(match.index + match[0].length);
+    const frags = [text];
+    let counter = 0;
+
+    // 在提及其他法律的地方切斷
+    this.lawIndex.forEach(law => {
+      for(let i = 0; i < frags.length; ++i) {
+        if(typeof frags[i] !== 'string') continue;
+        if(frags[i].length < law.name.length) continue;
+        const pos = frags[i].indexOf(law.name);
+        if(pos === -1) continue;
+        frags.splice(i, 1,
+          frags[i].substring(0, pos),
+          <Text key={counter++} style={{color: 'blue'}}
+            onPress={() => this.props.navigation.push('Law', {pcode: law.pcode})}
+          >{law.name}</Text>,
+          frags[i].substring(pos + law.name.length)
+        );
+      }
+    });
+
+    // 在提及其他法條的地方切斷
+    for(let i = 0; i < frags.length; ++i) {
+      if(typeof frags[i] !== 'string') continue;
+      const match = reArtNum.exec(frags[i]);
+      if(match) {
+        frags.splice(i, 1,
+          frags[i].substring(0, match.index),
+          <Text key={counter++} style={{color: 'green'}}
+            onPress={() => console.log('navigate to article(s)')}
+          >{match[0]}</Text>,
+          frags[i].substring(match.index + match[0].length)
+        );
+        ++i;
+      }
     }
-    if(str) frags.push(<Text key={counter++}>{str}</Text>);
-    return <Text>{frags}</Text>;
+
+    return <Text style={styles.articleItemText}>{frags}</Text>;
   }
 }

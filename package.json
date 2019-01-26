@@ -1,6 +1,6 @@
 {
   "name": "ler-app",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "preinstall": "git submodule init && git submodule update",
@@ -10,6 +10,7 @@
     "eject": "expo eject"
   },
   "dependencies": {
+    "chinese-parseint": "^1.1.0",
     "expo": "^32.0.0",
     "react": "16.5.0",
     "react-native": "https://github.com/expo/react-native/archive/sdk-32.0.0.tar.gz",

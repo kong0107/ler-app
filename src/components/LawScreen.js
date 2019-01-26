@@ -6,6 +6,7 @@ import {
   FlatList,
   SectionList
 } from 'react-native';
+import cpi from 'chinese-parseint';
 
 import styles from '../js/styles';
 import {
@@ -13,18 +14,19 @@ import {
   romanize,
   createFilterFunction
 } from '../js/utility';
-const lawtext2obj = require('../js/lawtext2obj');
+import lawtext2obj from '../js/lawtext2obj';
 
 import Settings from '../js/Settings';
 import LawAPI from '../js/LawAPI';
 
-export default class LawScreen extends React.Component {
+export default class LawScreen extends React.PureComponent {
   static navigationOptions = ({navigation}) =>({
     title: navigation.getParam('title', '')
   });
 
   constructor(props) {
     super(props);
+    this.constructedTime = Date.now();
     this.state = {
       pcode: '',
       law: {
@@ -50,14 +52,16 @@ export default class LawScreen extends React.Component {
   }
 
   componentDidMount() {
-    const pcode = this.props.navigation.getParam('pcode', 'H0080067');
+    const pcode = this.props.navigation.getParam('pcode', 'A0030154');//'H0080067');
     this.setState({pcode});
     if(!pcode) return;
     Promise.all([
+      LawAPI.getIndex(),
       LawAPI.getLaw(pcode),
       Settings.get('wrapArticleItemByPunctuation')
     ])
-    .then(([law, wrapArticleItemByPunctuation]) => {
+    .then(([lawIndex, law, wrapArticleItemByPunctuation]) => {
+      lawIndex.sort((a, b) => b.name.length - a.name.length);
       this.props.navigation.setParams({title: law.title});
       law.articles.forEach(article =>
         article.arranged = lawtext2obj(article.content)
@@ -67,6 +71,10 @@ export default class LawScreen extends React.Component {
 
     // 設定按了 headerRight 的搜尋鈕時要做的事：顯示搜尋框
     this.props.navigation.setParams({search: this.showSearchInput});
+  }
+
+  componentDidUpdate() {
+    console.log(Date.now() - this.constructedTime);
   }
 
   render() {
@@ -79,11 +87,8 @@ export default class LawScreen extends React.Component {
           placeholder="搜尋"
           onChangeText={query => this.setState({query})}
         />
-        <View style={{flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between'}}>
-          <Text>{law.pcode}</Text>
-          <Text>{law.lastUpdate}</Text>
-        </View>
-        <SectionList style={styles.lawContent}
+        <SectionList
+          ListHeaderComponent={<Text>{law.pcode} / {law.lastUpdate}</Text>}
           sections={makeSections(law.divisions, law.articles.filter(article => testFunc(article.content)))}
           renderSectionHeader={({section}) => <DivisionHeader division={section} />}
           renderItem={({item}) =>
@@ -140,7 +145,7 @@ const makeSections = (divisions, articles) => {
 };
 
 
-class DivisionHeader extends React.Component {
+class DivisionHeader extends React.PureComponent {
   renderPart(division) {
     if(!division.title) return null;
     return (
@@ -167,7 +172,7 @@ class DivisionHeader extends React.Component {
 }
 
 
-class Article extends React.Component {
+class Article extends React.PureComponent {
   /*constructor(props) {
     super(props);
     this.share = this.share.bind(this);
@@ -199,7 +204,7 @@ class Article extends React.Component {
   }
 }
 
-class ParaList extends React.Component {
+class ParaList extends React.PureComponent {
   render() {
     const list = this.props.items.map((item, index) => {
       let ordinal = '?', text = item.text;
@@ -231,12 +236,11 @@ class ParaList extends React.Component {
   }
 }
 
-const reArtNum = /第[一二三四五六七八九十百千]+條(之[一二三四五六七八九十]+)?(第[一二三四五六七八九十]+[項類款目])*([、及或至](第([一二三四五六七八九十百千]+)[條項類款目](之[一二三四五六七八九十]+)?)+)*/;
-class ParaListItem extends React.Component {
+const reArtNum = /(第[一二三四五六七八九十百千]+[條項類款目](之[一二三四五六七八九十]+)?)+([、及與或至](第([一二三四五六七八九十百千]+)[條項類款目](之[一二三四五六七八九十]+)?)+)*/;
+class ParaListItem extends React.PureComponent {
   constructor(props) {
     super(props);
-    this.lawIndex = LawAPI.getIndexSync()
-      .sort((a, b) => b.name.length - a.name.length);
+    this.lawIndex = LawAPI.getIndexSync();
   }
 
   render() {
@@ -253,6 +257,8 @@ class ParaListItem extends React.Component {
         if(frags[i].length < law.name.length) continue;
         const pos = frags[i].indexOf(law.name);
         if(pos === -1) continue;
+
+        // 刪掉原本的，替換成更小的碎片。
         frags.splice(i, 1,
           frags[i].substring(0, pos),
           <Text key={counter++} style={{color: 'blue'}}
@@ -268,10 +274,27 @@ class ParaListItem extends React.Component {
       if(typeof frags[i] !== 'string') continue;
       const match = reArtNum.exec(frags[i]);
       if(match) {
+        const ranges = [];
+        /**
+         * 分析提到哪些條文
+         * 最後如為 [307, 400, [1003, 1100]]
+         * 則表示第三條之七、第四條、第十條之三至第十一條
+         */
+        // 分析提到哪些條文
+        match[0].split(/[、及與或]/).forEach(s => {
+          const re = /第([一二三四五六七八九十百千]+)條(之([一二三四五六七八九十]+))?/g;
+          const mm = re.exec(s), mm2 = re.exec(s);
+          if(!mm) return; // 沒有提到任何「條」
+          const start = cpi(mm[1]) * 100 + cpi(mm[2] ? mm[3] : 0);
+          if(!mm2) return ranges.push(start); // 只有提到一條
+          const end = cpi(mm2[1]) * 100 + cpi(mm2[2] ? mm2[3] : 0);
+          ranges.push([start, end]); // 提及一個範圍
+        });
+
         frags.splice(i, 1,
           frags[i].substring(0, match.index),
           <Text key={counter++} style={{color: 'green'}}
-            onPress={() => console.log('navigate to article(s)')}
+            onPress={() => console.log(ranges)}
           >{match[0]}</Text>,
           frags[i].substring(match.index + match[0].length)
         );

@@ -10,13 +10,14 @@ import styles from '../js/styles';
 import LawAPI from '../js/LawAPI';
 import { createFilterFunction } from '../js/utility';
 
-export default class HomeScreen extends React.Component {
+export default class HomeScreen extends React.PureComponent {
   static navigationOptions = {
     title: '法規亦毒氣'
   };
 
   constructor(props) {
     super(props);
+    this.constructedTime = Date.now();
     this.state = {
       laws: [],
       query: ''
@@ -33,6 +34,10 @@ export default class HomeScreen extends React.Component {
     this.props.navigation.setParams({search: () => {
       if(this.refSearchInput) this.refSearchInput.focus();
     }});
+  }
+
+  componentDidUpdate() {
+    console.log(Date.now() - this.constructedTime);
   }
 
   render() {

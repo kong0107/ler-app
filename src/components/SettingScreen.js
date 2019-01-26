@@ -13,7 +13,7 @@ import {errorHandler as eh} from '../js/utility';
 import LawAPI from '../js/LawAPI';
 
 
-export default class SettingScreen extends React.Component {
+export default class SettingScreen extends React.PureComponent {
   static navigationOptions = {
     title: '設定',
     headerRight: null

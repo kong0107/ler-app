@@ -35,8 +35,6 @@ export default styles = StyleSheet.create({
   lawTitle: {
     fontSize: 20
   },
-  lawContent: {
-  },
   divisionHeader: {
     backgroundColor: '#ccc',
     flexDirection: 'row',
@@ -53,7 +51,7 @@ export default styles = StyleSheet.create({
   divisionHeaderNumber: {
   },
   divisionHeaderTitle: {
-    fontSize: 24,
+    fontSize: 20,
   },
   article: {
     padding: 4,

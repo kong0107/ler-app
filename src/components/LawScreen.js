@@ -1,14 +1,16 @@
-import React from 'react';
+import React, {
+  PureComponent
+} from 'react';
 import {
   View,
+  ScrollView,
   Text,
-  TextInput,
-  FlatList,
-  SectionList
+  TextInput
 } from 'react-native';
 import cpi from 'chinese-parseint';
 
-import styles from '../js/styles';
+import LawAPI from '../js/LawAPI';
+import Settings from '../js/Settings';
 import {
   numf,
   romanize,
@@ -16,70 +18,122 @@ import {
 } from '../js/utility';
 import lawtext2obj from '../js/lawtext2obj';
 
-import Settings from '../js/Settings';
-import LawAPI from '../js/LawAPI';
+import styles from '../js/styles';
 
-export default class LawScreen extends React.PureComponent {
+/**
+ * 顯示法律的元件。
+ *
+ * 因為想要快速跳至民法最後一條，所以不宜用 VirtualizedList （及其衍生的 FlatList 和 SectionList ），而應直接用 ScrollView 。
+ * 但若一次渲染格式化後的全部條文，又太沒效率…
+ */
+export default class LawScreen extends PureComponent {
   static navigationOptions = ({navigation}) =>({
-    title: navigation.getParam('title', '')
+    title: navigation.getParam('title', '讀取中')
   });
 
   constructor(props) {
     super(props);
-    this.constructedTime = Date.now();
     this.state = {
       pcode: '',
       law: {
         divisions: [],
         articles: []
       },
+      flatDivisions: [],
       query: '',
       searchInputVisibility: false
     };
     this.showSearchInput = this.showSearchInput.bind(this);
   }
 
-  /**
-   * 顯示搜尋框
-   */
+  // 顯示搜尋框
   showSearchInput() {
-    const ref = this.refSearchInput;
-    if(!ref) return;
+    if(!this.refSearchInput) return;
     this.setState({
       searchInputVisibility: true
-    })
-    ref.focus();
+    });
+    this.refSearchInput.focus();
   }
 
   componentDidMount() {
-    const pcode = this.props.navigation.getParam('pcode', 'A0030154');//'H0080067');
-    this.setState({pcode});
-    if(!pcode) return;
+    const pcode = this.props.navigation.getParam('pcode', 'A0030154');//'A0030154');//'H0080067');
+
+    // 設定按了 headerRight 的搜尋鈕時要做的事：顯示搜尋框
+    this.props.navigation.setParams({search: this.showSearchInput});
+
+    // 讀取資料並處理
     Promise.all([
-      LawAPI.getIndex(),
-      LawAPI.getLaw(pcode),
+      LawAPI.loadLaw(pcode),
       Settings.get('wrapArticleItemByPunctuation')
     ])
-    .then(([lawIndex, law, wrapArticleItemByPunctuation]) => {
-      lawIndex.sort((a, b) => b.name.length - a.name.length);
+    .then(([law, wrap]) => {
       this.props.navigation.setParams({title: law.title});
       law.articles.forEach(article =>
         article.arranged = lawtext2obj(article.content)
       );
-      this.setState({law, wrapArticleItemByPunctuation});
+
+      /**
+       * 只留下最底層的編章節。
+       * 例： [
+       *  {a},
+       *  {b, children: [{c}, {d}, {e}]},
+       *  {f}
+       * ]
+       * 轉換後： [
+       *  {a},
+       *  {c, ancestors: [{b}]},
+       *  {d, ancestors: [{b}]},
+       *  {e, ancestors: [{b}]},
+       *  {f}
+       * ]
+       * 考量：
+       * sticky 元件不方便相疊。很難同時讓「第一章」和「第一節」都 stick 在父元件頂部。
+       * 故改成只留下最底層的編章節，但元素本身保留其祖先資料。
+       */
+      const flatDivisions = law.divisions.slice();
+      for(let i = 0; i < flatDivisions.length;) {
+        const div = flatDivisions[i];
+        if(div.children) {
+          const ancestors = div.ancestors || [];
+          div.children.forEach(subDiv => subDiv.ancestors = [...ancestors, div]);
+          flatDivisions.splice(i, 1, ...div.children);
+        }
+        else ++i;
+      }
+
+      this.setState({law, wrap, flatDivisions});
     });
-
-    // 設定按了 headerRight 的搜尋鈕時要做的事：顯示搜尋框
-    this.props.navigation.setParams({search: this.showSearchInput});
-  }
-
-  componentDidUpdate() {
-    console.log(Date.now() - this.constructedTime);
   }
 
   render() {
-    const {query, law} = this.state;
-    const testFunc = createFilterFunction(query);
+    const {law} = this.state;
+    const testFunc = createFilterFunction(this.state.query);
+
+    // 整理出要顯示哪些條文
+    const stickyHeaderIndices = [];
+    const showing = law.articles.filter(a => testFunc(a.content));
+    if(law.preamble && testFunc(law.preamble))
+      showing.unshift({number: 0, arranged: [{text: law.preamble}]});
+
+    // 把編章節塞進去
+    this.state.flatDivisions.forEach(div => {
+      // 找到第一個屬於這個編章節的條文。
+      // 每次都從頭找有點沒效率，但為了在搜尋條文時只顯示必要的編章節，這樣程式碼比較精簡。
+      const target = showing.findIndex(artOrDiv =>
+        !artOrDiv.type //< 不能是前面塞進來過的編章節
+        && artOrDiv.number >= div.start
+        && artOrDiv.number <= div.end
+      );
+      if(target === -1) return;
+      showing.splice(target, 0, div);
+      stickyHeaderIndices.push(target);
+    });
+
+    const children = showing.map(item => item.type
+      ? <DivisionHeader division={item} key={item.type + item.start} />
+      : <Article article={item} key={item.number.toString()} navigation={this.props.navigation} wrap={this.state.wrap} />
+    )
+
     return (
       <View style={styles.container}>
         <TextInput style={[styles.searchInput, this.state.searchInputVisibility || styles.none]}
@@ -87,69 +141,21 @@ export default class LawScreen extends React.PureComponent {
           placeholder="搜尋"
           onChangeText={query => this.setState({query})}
         />
-        <SectionList
-          ListHeaderComponent={<Text>{law.pcode} / {law.lastUpdate}</Text>}
-          sections={makeSections(law.divisions, law.articles.filter(article => testFunc(article.content)))}
-          renderSectionHeader={({section}) => <DivisionHeader division={section} />}
-          renderItem={({item}) =>
-            <Article article={item}
-              navigation={this.props.navigation}
-              wrap={this.state.wrapArticleItemByPunctuation}
-            />
-          }
-          keyExtractor={article => article.number.toString()}
-          stickySectionHeadersEnabled={true}
-        />
+        <ScrollView
+          ref={ins => this.refScrollView = ins}
+          stickyHeaderIndices={stickyHeaderIndices}
+        >{children}</ScrollView>
       </View>
     );
   }
 }
 
 
-/**
- * 把巢狀編章節扁平化，然後弄成 SectionList 方便用的樣子。
- * 概要：只留下最底層的編章節，並追加 ancestors 屬性來記錄其祖先們。
- * 方法：把陣列底層中有子區塊的編章節，「替換」為其子區塊。
- * 例： [
- *  {a},
- *  {b, children: [{c}, {d}, {e}]},
- *  {f}
- * ]
- * 轉換後： [
- *  {a},
- *  {c, ancestors: [{b}]},
- *  {d, ancestors: [{b}]},
- *  {e, ancestors: [{b}]},
- *  {f}
- * ]
- *
- * 最後僅回傳內有條文的區塊，這是為了在搜尋法條時，略去顯示不需要的編章節。
- */
-const makeSections = (divisions, articles) => {
-  if(!divisions.length) return [{data: articles}];
-
-  const result = divisions.slice();
-  for(let i = 0; i < result.length;) {
-    const section = result[i];
-    if(section.children) {
-      const ancestors = section.ancestors || [];
-      section.children.forEach(subDiv => subDiv.ancestors = [...ancestors, section]);
-      result.splice(i, 1, ...section.children);
-    }
-    else {
-      section.data = articles.filter(a => a.number >= section.start && a.number <= section.end);
-      ++i;
-    }
-  }
-  return result.filter(section => section.data.length);
-};
-
-
 class DivisionHeader extends React.PureComponent {
   renderPart(division) {
     if(!division.title) return null;
     return (
-      <View style={styles.divisionHeaderPart}>
+      <View style={styles.divisionHeaderPart} key={division.type + division.start}>
         <Text style={styles.divisionHeaderNumber}>第 {numf(division.number)} {division.type}</Text>
         <Text style={styles.divisionHeaderTitle}>{division.title}</Text>
       </View>
@@ -158,14 +164,10 @@ class DivisionHeader extends React.PureComponent {
 
   render() {
     const division = this.props.division;
+    const genealogy = (division.ancestors || []).concat(division);
     return (
       <View style={styles.divisionHeader}>
-        <FlatList style={styles.divisionHeaderAncestors}
-          data={division.ancestors}
-          renderItem={({item}) => this.renderPart(item)}
-          keyExtractor={div => div.type + div.start}
-        />
-        {this.renderPart(division)}
+        {genealogy.map(this.renderPart)}
       </View>
     );
   }
@@ -173,31 +175,13 @@ class DivisionHeader extends React.PureComponent {
 
 
 class Article extends React.PureComponent {
-  /*constructor(props) {
-    super(props);
-    this.share = this.share.bind(this);
-  }
-
-  share() {
-    const law = this.props.law;
-    const article = this.props.article;
-    const numText = numf(article.number);
-    const title = law.title + ` 第 ${numText} 條`;
-    Share.share({
-      message: article.content,
-      title: title,
-      url: `https://law.moj.gov.tw/LawClass/LawSingle.aspx?pcode=${law.pcode}&flno=${numText}`
-    }, {
-      subject: title,
-      dialogTitle: title
-    });
-  }*/
-
   render() {
     const article = this.props.article;
     return (
       <View style={styles.article}>
-        <Text style={styles.articleNumber}>第 {numf(article.number)} 條</Text>
+        <Text style={styles.articleNumber}>
+          {article.number ? `第 ${numf(article.number)} 條` : '前言'}
+        </Text>
         <ParaList {...this.props} items={article.arranged} />
       </View>
     );
@@ -238,14 +222,11 @@ class ParaList extends React.PureComponent {
 
 const reArtNum = /(第[一二三四五六七八九十百千]+[條項類款目](之[一二三四五六七八九十]+)?)+([、及與或至](第([一二三四五六七八九十百千]+)[條項類款目](之[一二三四五六七八九十]+)?)+)*/;
 class ParaListItem extends React.PureComponent {
-  constructor(props) {
-    super(props);
-    this.lawIndex = LawAPI.getIndexSync();
-  }
-
   render() {
     const text = this.props.children;
     if(typeof text !== 'string') return <Text>Error: string expected</Text>;
+
+    return <Text style={styles.articleItemText}>{text}</Text>;
 
     const frags = [text];
     let counter = 0;

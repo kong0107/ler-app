@@ -9,7 +9,9 @@ import LawScreen from './LawScreen';
 import SettingScreen from './SettingScreen';
 import HeaderRight from './HeaderRight';
 
-export default createAppContainer(
+//const AppContainer =
+export default
+createAppContainer(
   createStackNavigator(
     {
       Home: HomeScreen,
@@ -24,3 +26,13 @@ export default createAppContainer(
     }
   )
 );
+/*
+export default class App extends React.Component {
+  render() {
+    return (
+      <AppContainer
+        ref={ins => this.navigator = ins}
+      />
+    );
+  }
+}*/

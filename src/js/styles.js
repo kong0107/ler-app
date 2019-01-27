@@ -40,10 +40,6 @@ export default styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap'
   },
-  divisionHeaderAncestors: {
-    flexDirection: 'row',
-    flexWrap: 'wrap'
-  },
   divisionHeaderPart: {
     marginEnd: 12,
     alignItems: 'flex-start'

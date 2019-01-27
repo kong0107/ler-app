@@ -1,16 +1,6 @@
-/**
- * Note:
- * "By default, iOS will block any request that's not encrypted using SSL."
- * @see {@link https://facebook.github.io/react-native/docs/network#using-fetch }
- */
-
 import { FileSystem as fs } from 'expo';
 import config from './config';
-import {
-  errorHandler as eh,
-  fetch2,
-  wait
-} from './utility';
+import { fetch2 } from './utility';
 
 // 建立本地端絕對路徑
 const makeUri = path =>
@@ -28,123 +18,95 @@ const read = path =>
   fs.readAsStringAsync(makeUri(path))
 ;
 
-// 從 CDN 下載檔案並存於同樣的路徑。
+/**
+ * 從 CDN 下載檔案並存於同樣的路徑。
+ * 注意 iOS 只允許 SSL 連線。
+ * @see {@link https://facebook.github.io/react-native/docs/network#using-fetch }
+ */
 const download = path =>
   fs.downloadAsync(config.cdn + path, makeUri(path))
 ;
 
-// 確認遠端的資料版本
-export const remoteUpdateDate = () =>
-  fetch2(config.cdn + 'UpdateDate.txt').then(res => res.text())
-  .catch(reason => {eh(reason); return '';})
-;
+/**
+ * 不給使用者直接存取的變數。
+ * 其實應該弄成 private member variable ，不過先這樣吧。
+ */
+const data = {
+  remoteUpdateDate: '',
+  localUpdateDate: '',
+  catalog: []
+};
 
 /**
- * UpdateDate.txt 和 index.json 要一起處理。
+ * 主程式
  */
-export const localUpdateDate = () =>
-  exists('UpdateDate.txt')
-  .then(async fileExists => {
-    if(!fileExists) await updateIndex();
-    return read('UpdateDate.txt');
-  })
-;
+const LawAPI = {
 
-let lawIndex = [];
-export const getIndex = () =>
-  lawIndex.length
-  ? Promise.resolve(lawIndex)
-  : exists('index.json')
-    .then(async fileExists => {
-      if(!fileExists) await updateIndex();
-      return lawIndex = await read('index.json').then(JSON.parse);
-    })
-;
-export const getIndexSync = () => lawIndex; // TODO: not a good solution
+  loadCatalog: async () => {
+    if(data.catalog.length) return data.catalog;
+    const fileExists = exists('index.json');
+    if(!fileExists) await LawAPI.updateCatalog();
+    const json = await read('index.json');
+    return data.catalog = JSON.parse(json);
+  },
 
-export const updateIndex = () =>
-  Promise.all([
-    download('index.json'),
-    download('UpdateDate.txt'),
-    exists('FalVMingLing').then(dirExists => {
-      if(!dirExists) return fs.makeDirectoryAsync(makeUri('FalVMingLing'))
-    })
-  ]).then(async () => {
-    lawIndex = await read('index.json').then(JSON.parse);
-  });
-;
+  loadRemoteUpdateDate: async () => {
+    if(data.remoteUpdateDate) return data.remoteUpdateDate;
+    return data.remoteUpdateDate
+      = await fetch2(config.cdn + 'UpdateDate.txt').then(res => res.text())
+    ;
+  },
 
-/**
- * 抓取單一法律資料
- */
-export const getLaw = pcode =>
-  exists(`FalVMingLing/${pcode}.json`)
-  .then(async fileExists => {
-    if(!fileExists) await updateLaw(pcode);
-    let law = await read(`FalVMingLing/${pcode}.json`).then(JSON.parse);
+  loadLocalUpdateDate: async () => {
+    if(data.localUpdateDate) return data.localUpdateDate;
+    const fileExists = await exists('UpdateDate.txt');
+    if(!fileExists) await LawAPI.updateCatalog();
+    return data.localUpdateDate = await read('UpdateDate.txt');
+  },
+
+  updateCatalog: async () => {
+    await Promise.all([
+      download('index.json'),
+      download('UpdateDate.txt')
+    ]);
+    const json = await read('index.json');
+    return data.catalog = JSON.parse(json);
+  },
+
+  loadLaw: async pcode => {
+    const path = `FalVMingLing/${pcode}.json`;
+    const fileExists = await exists(path);
+    if(!fileExists) await LawAPI.updateLaw(pcode);
+    let law = await read(path).then(JSON.parse);
 
     // 如果既存檔案不夠新，那就更新。
     if(fileExists) {
-      const lastUpdate = (await getIndex()).find(lawInfo => lawInfo.pcode === law.pcode).lastUpdate;
-      if(law.lastUpdate < lastUpdate) {
-        await updateLaw(pcode);
-        law = await read(`FalVMingLing/${pcode}.json`).then(JSON.parse);
+      const catalog = await LawAPI.loadCatalog();
+      const knownUpdate = catalog.find(item => item.pcode === law.pcode).lastUpdate;
+      if(law.lastUpdate < knownUpdate) {
+        await LawAPI.updateLaw(pcode);
+        law = await read(path).then(JSON.parse);
 
         // 如果單一法規的更新日期竟然比 UpdateDate.txt 還要新，那就表示 index.json 也該更新了。
-        const indexUpdateDate = await localUpdateDate();
-        if(law.lastUpdate > indexUpdateDate) updateIndex();
+        const catalogUpdateDate = await LawAPI.loadLocalUpdateDate();
+        if(law.lastUpdate > catalogUpdateDate) updateCatalog();
       }
     }
 
     return law;
-  })
-;
+  },
 
-export const updateLaw = pcode =>
-  download(`FalVMingLing/${pcode}.json`)
-;
+  updateLaw: pcode => download(`FalVMingLing/${pcode}.json`)
 
-
-/**
- * 更新所有資料
- * @param {function} callback 每當有更新進度時就呼叫一次的函式
- */
-/*export const updateAll = async (callback = () => {}) => {
-  // 只下載需要更新的法規
-  await updateIndex();
-  await getIndex().then(async lawList => {
-    const status = {
-      amount: lawList.length,
-      updated: 0, // 當法規重新下載後，加一。
-      skip: 0 // 當法規不須重新下載時，加一。
-    };
-    callback(status);
-    for(let i = 0; i < lawList.length; ++i) {
-      const pcode = lawList[i].pcode;
-      const path = `FalVMingLing/${pcode}.json`;
-      const fileExists = await exists(path);
-
-      let needDownload = !fileExists;
-      if(fileExists) {
-        const current = await getLaw(pcode);
-        if(current.lastUpdate !== lawList[i].lastUpdate)
-          needDownload = true;
-      }
-
-      if(needDownload) {
-        await updateLaw(pcode);
-        status.updated++;
-      }
-      else status.skip++;
-      callback(status);
-    }
-  });
-  return;
-};*/
-
-export default LawAPI = {
-  remoteUpdateDate, localUpdateDate,
-  getIndex, updateIndex, getIndexSync,
-  getLaw, updateLaw
-  //,updateAll
 };
+
+LawAPI.ready = Promise.all([
+  LawAPI.loadCatalog(),
+  LawAPI.loadLocalUpdateDate(),
+  LawAPI.loadRemoteUpdateDate(),
+  exists('FalVMingLing').then(dirExists => {
+    if(!dirExists) return fs.makeDirectoryAsync(makeUri('FalVMingLing'))
+  })
+]);
+
+export default LawAPI;

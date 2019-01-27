@@ -1,4 +1,6 @@
-import React from 'react';
+import React, {
+  PureComponent
+} from 'react';
 import {
   View,
   Text,
@@ -6,14 +8,16 @@ import {
   Button
 } from 'react-native';
 
-import Settings from '../js/Settings';
-import styles from '../js/styles';
-import {errorHandler as eh} from '../js/utility';
-
 import LawAPI from '../js/LawAPI';
+import Settings from '../js/Settings';
+import { errorHandler as eh } from '../js/utility';
 
+import styles from '../js/styles';
 
-export default class SettingScreen extends React.PureComponent {
+/**
+ *
+ */
+export default class SettingScreen extends PureComponent {
   static navigationOptions = {
     title: '設定',
     headerRight: null
@@ -32,8 +36,8 @@ export default class SettingScreen extends React.PureComponent {
   componentWillMount() {
     Promise.all([
       Settings.load(),
-      LawAPI.remoteUpdateDate(),
-      LawAPI.localUpdateDate()
+      LawAPI.loadRemoteUpdateDate(),
+      LawAPI.loadLocalUpdateDate()
     ]).then(([settings, remoteUpdateDate, localUpdateDate]) => {
       const updatable = (remoteUpdateDate > localUpdateDate);
       this.setState({
@@ -59,8 +63,8 @@ export default class SettingScreen extends React.PureComponent {
       updateButtonText: '更新中',
       updateButtonDisabled: true
     });
-    LawAPI.updateIndex()
-    .then(LawAPI.localUpdateDate)
+    LawAPI.updateCatalog()
+    .then(LawAPI.loadLocalUpdateDate)
     .then(ud => this.setState({
       localUpdateDate: ud,
       remoteUpdateDate: ud,

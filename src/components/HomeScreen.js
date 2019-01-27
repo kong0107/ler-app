@@ -1,4 +1,6 @@
-import React from 'react';
+import React, {
+  PureComponent
+} from 'react';
 import {
   View,
   Text,
@@ -6,18 +8,21 @@ import {
   FlatList
 } from 'react-native';
 
-import styles from '../js/styles';
 import LawAPI from '../js/LawAPI';
 import { createFilterFunction } from '../js/utility';
 
-export default class HomeScreen extends React.PureComponent {
+import styles from '../js/styles';
+
+/**
+ *
+ */
+export default class HomeScreen extends PureComponent {
   static navigationOptions = {
     title: '法規亦毒氣'
   };
 
   constructor(props) {
     super(props);
-    this.constructedTime = Date.now();
     this.state = {
       laws: [],
       query: ''
@@ -25,7 +30,7 @@ export default class HomeScreen extends React.PureComponent {
   }
 
   componentDidMount() {
-    LawAPI.getIndex()
+    LawAPI.loadCatalog()
     .then(laws => this.setState({
       laws: laws.sort((a, b) => b.lastUpdate - a.lastUpdate)
     }));
@@ -34,10 +39,6 @@ export default class HomeScreen extends React.PureComponent {
     this.props.navigation.setParams({search: () => {
       if(this.refSearchInput) this.refSearchInput.focus();
     }});
-  }
-
-  componentDidUpdate() {
-    console.log(Date.now() - this.constructedTime);
   }
 
   render() {
@@ -60,7 +61,7 @@ export default class HomeScreen extends React.PureComponent {
   }
 }
 
-class LawListItem extends React.PureComponent {
+class LawListItem extends PureComponent {
   render() {
     const law = this.props.law;
     return (

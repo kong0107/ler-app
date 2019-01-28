@@ -5,7 +5,8 @@ import {
   View,
   ScrollView,
   Text,
-  TextInput
+  TextInput,
+  Slider
 } from 'react-native';
 import cpi from 'chinese-parseint';
 
@@ -24,7 +25,9 @@ import styles from '../js/styles';
  * 顯示法律的元件。
  *
  * 因為想要快速跳至民法最後一條，所以不宜用 VirtualizedList （及其衍生的 FlatList 和 SectionList ），而應直接用 ScrollView 。
- * 但若一次渲染格式化後的全部條文，又太沒效率…
+ * 但若一次渲染格式化後的全部條文，又太沒效率，所以：
+ * 1. 批次渲染後存起來（而非每次要顯示時才渲染）
+ * 2. 用 setInterval 每次渲染少量條文就好（如10條）
  */
 export default class LawScreen extends PureComponent {
   static navigationOptions = ({navigation}) =>({
@@ -35,6 +38,7 @@ export default class LawScreen extends PureComponent {
     super(props);
     this.state = {
       pcode: '',
+      catalog: [],
       law: {
         divisions: [],
         articles: []
@@ -44,6 +48,9 @@ export default class LawScreen extends PureComponent {
       searchInputVisibility: false
     };
     this.showSearchInput = this.showSearchInput.bind(this);
+    this.renderSomeArticles = this.renderSomeArticles.bind(this);
+
+    this.constructedTime = Date.now();
   }
 
   // 顯示搜尋框
@@ -56,17 +63,19 @@ export default class LawScreen extends PureComponent {
   }
 
   componentDidMount() {
-    const pcode = this.props.navigation.getParam('pcode', 'A0030154');//'A0030154');//'H0080067');
+    const pcode = this.props.navigation.getParam('pcode', 'B0000001');//'A0030154');//'H0080067');
 
     // 設定按了 headerRight 的搜尋鈕時要做的事：顯示搜尋框
     this.props.navigation.setParams({search: this.showSearchInput});
 
     // 讀取資料並處理
     Promise.all([
+      LawAPI.loadCatalog(),
       LawAPI.loadLaw(pcode),
       Settings.get('wrapArticleItemByPunctuation')
     ])
-    .then(([law, wrap]) => {
+    .then(([catalog, law, wrap]) => {
+      catalog.sort((a, b) => b.name.length - a.name.length);
       this.props.navigation.setParams({title: law.title});
       law.articles.forEach(article =>
         article.arranged = lawtext2obj(article.content)
@@ -94,26 +103,91 @@ export default class LawScreen extends PureComponent {
       for(let i = 0; i < flatDivisions.length;) {
         const div = flatDivisions[i];
         if(div.children) {
+          // 如果有孩子，那就告訴孩子們祖先有誰，然後把自己替換成孩子們。索引值不變。
           const ancestors = div.ancestors || [];
           div.children.forEach(subDiv => subDiv.ancestors = [...ancestors, div]);
           flatDivisions.splice(i, 1, ...div.children);
         }
-        else ++i;
+        else {
+          // 如果沒有孩子，那就做出 React Element ，然後處理下一位。
+          div.element = <DivisionHeader division={div} key={div.type + div.start} />;
+          ++i;
+        }
       }
 
-      this.setState({law, wrap, flatDivisions});
+      // 渲染法規的前言，如果有的話。
+      const preambleElement = law.preamble &&
+        <Article key="0"
+          article={{
+            number: 0,
+            content: law.preamble,
+            arranged: [{text: law.preamble}]
+          }}
+          navigation={this.props.navigation}
+          catalog={this.state.catalog}
+          wrap={wrap}
+        />
+      ;
+
+      this.setState({catalog, law, wrap, flatDivisions, preambleElement});
     });
+  }
+
+  /**
+   * 渲染一些條文
+   * @param {*} size 要渲染的條文數目
+   * @returns {number} 實際渲染的條文數目
+   */
+  renderSomeArticles(size = 1) {
+    const {law, wrap} = this.state;
+    const start = law.articles.findIndex(a => !a.element); // 找到第一個還沒被渲染的
+    if(start === -1) return 0;
+
+    const end = Math.min(start + size, law.articles.length); // 每次渲染的條文數
+    for(let i = start; i < end; ++i) {
+      const target = law.articles[i];
+      target.element = (
+        <Article key={target.number.toString()}
+          article={target}
+          navigation={this.props.navigation}
+          catalog={this.state.catalog}
+          wrap={wrap}
+        />
+      );
+    }
+    this.setState({law: {...law}});
+    return end - start;
+  }
+
+  componentDidUpdate() {
+    const articles = this.state.law.articles;
+    if(articles.length && !articles[0].element) {
+      // 先渲染要先顯示的
+      this.renderSomeArticles(10);
+
+      // 接著非同步地渲染法條
+      const timer = setInterval(() => {
+        const size = this.renderSomeArticles(50);
+        if(!size) {
+          clearInterval(timer);
+          console.log(`rendered ${articles.length} articles in ${Date.now() - this.constructedTime} ms.`);
+        }
+      }, 200); // 每次渲染的間隔
+    }
   }
 
   render() {
     const {law} = this.state;
     const testFunc = createFilterFunction(this.state.query);
 
-    // 整理出要顯示哪些條文
+    // 整理出要顯示哪些條文（包含前言）
     const stickyHeaderIndices = [];
-    const showing = law.articles.filter(a => testFunc(a.content));
+    const showingItems = law.articles.filter(a => testFunc(a.content) && a.element);
     if(law.preamble && testFunc(law.preamble))
-      showing.unshift({number: 0, arranged: [{text: law.preamble}]});
+      showingItems.unshift(this.state.preambleElement);
+
+    // 列表中要顯示的所有東西（包含編章節標頭）
+    const showing = showingItems.slice();
 
     // 把編章節塞進去
     this.state.flatDivisions.forEach(div => {
@@ -129,10 +203,7 @@ export default class LawScreen extends PureComponent {
       stickyHeaderIndices.push(target);
     });
 
-    const children = showing.map(item => item.type
-      ? <DivisionHeader division={item} key={item.type + item.start} />
-      : <Article article={item} key={item.number.toString()} navigation={this.props.navigation} wrap={this.state.wrap} />
-    )
+    const children = showing.map(item => item.element);
 
     return (
       <View style={styles.container}>
@@ -144,7 +215,24 @@ export default class LawScreen extends PureComponent {
         <ScrollView
           ref={ins => this.refScrollView = ins}
           stickyHeaderIndices={stickyHeaderIndices}
-        >{children}</ScrollView>
+          children={children}
+        />
+        <Slider
+          step={1}
+          minimumValue={0}
+          maximumValue={showingItems.length - 1}
+          onValueChange={index => {
+            const target = showingItems[index];
+            if(!target || !target.layout) return; // 測試時發現有可能滑超過範圍，或 onLayout 還沒好
+            let offset = target.layout.y;
+
+            // 如果有 sticky 的編章節標頭，要扣掉其高度，不然條文會被蓋到。
+            const div = this.state.flatDivisions.find(div => div.start <= target.number && div.end >= target.number);
+            if(div) offset -= div.layout.height;
+
+            this.refScrollView.scrollTo({y: offset});
+          }}
+        />
       </View>
     );
   }
@@ -155,7 +243,10 @@ class DivisionHeader extends React.PureComponent {
   renderPart(division) {
     if(!division.title) return null;
     return (
-      <View style={styles.divisionHeaderPart} key={division.type + division.start}>
+      <View style={styles.divisionHeaderPart}
+        key={division.type + division.start}
+        onLayout={event => division.layout = event.nativeEvent.layout}
+      >
         <Text style={styles.divisionHeaderNumber}>第 {numf(division.number)} {division.type}</Text>
         <Text style={styles.divisionHeaderTitle}>{division.title}</Text>
       </View>
@@ -178,11 +269,16 @@ class Article extends React.PureComponent {
   render() {
     const article = this.props.article;
     return (
-      <View style={styles.article}>
+      <View style={styles.article}
+        onLayout={event => article.layout = event.nativeEvent.layout}
+      >
         <Text style={styles.articleNumber}>
           {article.number ? `第 ${numf(article.number)} 條` : '前言'}
         </Text>
-        <ParaList {...this.props} items={article.arranged} />
+        { true
+          ? <Text>{article.content}</Text>
+          : <ParaList {...this.props} items={article.arranged} />
+        }
       </View>
     );
   }
@@ -226,13 +322,13 @@ class ParaListItem extends React.PureComponent {
     const text = this.props.children;
     if(typeof text !== 'string') return <Text>Error: string expected</Text>;
 
-    return <Text style={styles.articleItemText}>{text}</Text>;
+    //return <Text style={styles.articleItemText}>{text}</Text>;
 
     const frags = [text];
     let counter = 0;
 
     // 在提及其他法律的地方切斷
-    this.lawIndex.forEach(law => {
+    this.props.catalog.forEach(law => {
       for(let i = 0; i < frags.length; ++i) {
         if(typeof frags[i] !== 'string') continue;
         if(frags[i].length < law.name.length) continue;

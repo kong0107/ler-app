@@ -44,7 +44,7 @@ const LawAPI = {
 
   loadCatalog: async () => {
     if(data.catalog.length) return data.catalog;
-    const fileExists = exists('index.json');
+    const fileExists = await exists('index.json');
     if(!fileExists) await LawAPI.updateCatalog();
     const json = await read('index.json');
     return data.catalog = JSON.parse(json);
@@ -101,9 +101,9 @@ const LawAPI = {
 };
 
 LawAPI.ready = Promise.all([
-  LawAPI.loadCatalog(),
+  /*LawAPI.loadCatalog(),
   LawAPI.loadLocalUpdateDate(),
-  LawAPI.loadRemoteUpdateDate(),
+  LawAPI.loadRemoteUpdateDate(),*/
   exists('FalVMingLing').then(dirExists => {
     if(!dirExists) return fs.makeDirectoryAsync(makeUri('FalVMingLing'))
   })

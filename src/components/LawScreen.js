@@ -36,68 +36,55 @@ export default class LawScreen extends PureComponent {
 
   constructor(props) {
     super(props);
+    this.constructedTime = Date.now();
+    this.renderSomeArticles = this.renderSomeArticles.bind(this);
     this.state = {
-      pcode: '',
       catalog: [],
       law: {
+        articles: [],
         divisions: [],
-        articles: []
+        flatDivisions: []
       },
-      flatDivisions: [],
       query: '',
       searchInputVisibility: false
     };
-    this.showSearchInput = this.showSearchInput.bind(this);
-    this.renderSomeArticles = this.renderSomeArticles.bind(this);
-
-    this.constructedTime = Date.now();
-  }
-
-  // 顯示搜尋框
-  showSearchInput() {
-    if(!this.refSearchInput) return;
-    this.setState({
-      searchInputVisibility: true
-    });
-    this.refSearchInput.focus();
-  }
-
-  componentDidMount() {
-    const pcode = this.props.navigation.getParam('pcode', 'B0000001');//'A0030154');//'H0080067');
 
     // 設定按了 headerRight 的搜尋鈕時要做的事：顯示搜尋框
-    this.props.navigation.setParams({search: this.showSearchInput});
+    this.props.navigation.setParams({
+      search: () => {
+        if(!this.refSearchInput) return;
+        this.setState({
+          searchInputVisibility: true
+        });
+        this.refSearchInput.focus();
+      }
+    });
 
-    // 讀取資料並處理
-    Promise.all([
-      LawAPI.loadCatalog(),
-      LawAPI.loadLaw(pcode),
-      Settings.get('wrapArticleItemByPunctuation')
-    ])
-    .then(([catalog, law, wrap]) => {
-      catalog.sort((a, b) => b.name.length - a.name.length);
+    // 讀取資料並先處理一部分（因為 this.state 還未必可用）
+    this.pCatalog = LawAPI.loadCatalog()
+      .then(catalog => catalog.sort((a, b) => b.name.length - a.name.length));
+
+    const pcode = this.props.navigation.getParam('pcode', 'B0000001');//'A0030154');//'H0080067');
+    this.pLaw = LawAPI.loadLaw(pcode).then(law => {
+      console.log(`Load JSON file after ${Date.now() - this.constructedTime} ms`);
       this.props.navigation.setParams({title: law.title});
       law.articles.forEach(article =>
         article.arranged = lawtext2obj(article.content)
       );
 
       /**
-       * 只留下最底層的編章節。
+       * 編章節結構樹只留下葉子，方便讓 sticky 機制運作。
        * 例： [
        *  {a},
-       *  {b, children: [{c}, {d}, {e}]},
-       *  {f}
+       *  {b, children: [{c}, {d}]},
+       *  {e}
        * ]
        * 轉換後： [
        *  {a},
        *  {c, ancestors: [{b}]},
        *  {d, ancestors: [{b}]},
-       *  {e, ancestors: [{b}]},
-       *  {f}
+       *  {e}
        * ]
-       * 考量：
-       * sticky 元件不方便相疊。很難同時讓「第一章」和「第一節」都 stick 在父元件頂部。
-       * 故改成只留下最底層的編章節，但元素本身保留其祖先資料。
        */
       const flatDivisions = law.divisions.slice();
       for(let i = 0; i < flatDivisions.length;) {
@@ -114,9 +101,22 @@ export default class LawScreen extends PureComponent {
           ++i;
         }
       }
+      law.flatDivisions = flatDivisions;
 
-      // 渲染法規的前言，如果有的話。
-      const preambleElement = law.preamble &&
+      return law;
+    });
+  }
+
+  componentDidMount() {
+
+    // 讀取資料並處理
+    Promise.all([
+      this.pCatalog,
+      this.pLaw,
+      Settings.get('wrapArticleItemByPunctuation')
+    ])
+    .then(([catalog, law, wrap]) => {
+      law.preambleElement = law.preamble &&
         <Article key="0"
           article={{
             number: 0,
@@ -124,12 +124,11 @@ export default class LawScreen extends PureComponent {
             arranged: [{text: law.preamble}]
           }}
           navigation={this.props.navigation}
-          catalog={this.state.catalog}
+          catalog={catalog}
           wrap={wrap}
         />
       ;
-
-      this.setState({catalog, law, wrap, flatDivisions, preambleElement});
+      this.setState({catalog, law, wrap});
     });
   }
 
@@ -165,7 +164,7 @@ export default class LawScreen extends PureComponent {
       // 先渲染要先顯示的
       this.renderSomeArticles(10);
 
-      // 接著非同步地渲染法條
+      // 接著非同步地渲染法條le
       const timer = setInterval(() => {
         const size = this.renderSomeArticles(50);
         if(!size) {
@@ -184,13 +183,13 @@ export default class LawScreen extends PureComponent {
     const stickyHeaderIndices = [];
     const showingItems = law.articles.filter(a => testFunc(a.content) && a.element);
     if(law.preamble && testFunc(law.preamble))
-      showingItems.unshift(this.state.preambleElement);
+      showingItems.unshift(law.preambleElement);
 
     // 列表中要顯示的所有東西（包含編章節標頭）
     const showing = showingItems.slice();
 
     // 把編章節塞進去
-    this.state.flatDivisions.forEach(div => {
+    law.flatDivisions.forEach(div => {
       // 找到第一個屬於這個編章節的條文。
       // 每次都從頭找有點沒效率，但為了在搜尋條文時只顯示必要的編章節，這樣程式碼比較精簡。
       const target = showing.findIndex(artOrDiv =>
@@ -204,6 +203,7 @@ export default class LawScreen extends PureComponent {
     });
 
     const children = showing.map(item => item.element);
+    const showSlider = showingItems.length > 1 && law.articles.every(a => a.element);
 
     return (
       <View style={styles.container}>
@@ -218,6 +218,7 @@ export default class LawScreen extends PureComponent {
           children={children}
         />
         <Slider
+          style={showSlider || styles.none}
           step={1}
           minimumValue={0}
           maximumValue={showingItems.length - 1}
@@ -227,7 +228,7 @@ export default class LawScreen extends PureComponent {
             let offset = target.layout.y;
 
             // 如果有 sticky 的編章節標頭，要扣掉其高度，不然條文會被蓋到。
-            const div = this.state.flatDivisions.find(div => div.start <= target.number && div.end >= target.number);
+            const div = law.flatDivisions.find(div => div.start <= target.number && div.end >= target.number);
             if(div) offset -= div.layout.height;
 
             this.refScrollView.scrollTo({y: offset});
@@ -275,7 +276,7 @@ class Article extends React.PureComponent {
         <Text style={styles.articleNumber}>
           {article.number ? `第 ${numf(article.number)} 條` : '前言'}
         </Text>
-        { true
+        { false
           ? <Text>{article.content}</Text>
           : <ParaList {...this.props} items={article.arranged} />
         }
@@ -368,11 +369,13 @@ class ParaListItem extends React.PureComponent {
           ranges.push([start, end]); // 提及一個範圍
         });
 
+        const numberedText = match[0].replace(/[一二三四五六七八九十百千]+/g, cn => ` ${cpi(cn)} `);
+
         frags.splice(i, 1,
           frags[i].substring(0, match.index),
           <Text key={counter++} style={{color: 'green'}}
             onPress={() => console.log(ranges)}
-          >{match[0]}</Text>,
+          >{numberedText}</Text>,
           frags[i].substring(match.index + match[0].length)
         );
         ++i;

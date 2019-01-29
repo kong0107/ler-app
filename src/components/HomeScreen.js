@@ -27,18 +27,19 @@ export default class HomeScreen extends PureComponent {
       laws: [],
       query: ''
     };
-  }
-
-  componentDidMount() {
-    LawAPI.loadCatalog()
-    .then(laws => this.setState({
-      laws: laws.sort((a, b) => b.lastUpdate - a.lastUpdate)
-    }));
 
     // 設定按了 headerRight 的搜尋鈕時要做的事：聚焦到搜尋框
     this.props.navigation.setParams({search: () => {
       if(this.refSearchInput) this.refSearchInput.focus();
     }});
+
+    this.pCatalog = LawAPI.loadCatalog();
+  }
+
+  componentDidMount() {
+    this.pCatalog.then(laws => this.setState({
+      laws: laws.sort((a, b) => b.lastUpdate - a.lastUpdate)
+    }));
   }
 
   render() {
